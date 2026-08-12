@@ -14,9 +14,14 @@ snapping.
 
 ## Running it
 
-Open `Processing_Loops.pde` in the Processing IDE and press Run (▶). The sketch opens at
-1000×800 with the sequencer paused and the background already settled into its starting
-layout — press Space to start playback.
+Open `Processing_Loops.pde` in the Processing IDE and press Run (▶). By default the
+sketch launches fullscreen (mouse cursor hidden) at your display's native resolution,
+with the sequencer paused and the background already settled into its starting layout —
+press Space to start playback. Press `Esc` to quit.
+
+To run windowed instead (useful during development), set `useFullScreen = false` near
+the top of `Processing_Loops.pde` — it'll open at a fixed 1000×800 with the cursor
+visible.
 
 ## Controls
 

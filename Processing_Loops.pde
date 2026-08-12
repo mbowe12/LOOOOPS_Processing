@@ -79,8 +79,15 @@ int mutationPhase = PHASE_BUILD;
 int phaseEndTime = -1;
 float globalRotation = 0;
 
+boolean useFullScreen = true; // false for a windowed 1000x800 canvas during development
+
 void setup() {
-  size(1000, 800, P2D);
+  if (useFullScreen) {
+    fullScreen(P2D);
+    noCursor();
+  } else {
+    size(1000, 800, P2D);
+  }
   smooth(4);
 
   // Reseed explicitly so this run's palette/texture/mode mapping is independent of
