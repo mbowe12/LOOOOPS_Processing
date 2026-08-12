@@ -81,12 +81,20 @@ float globalRotation = 0;
 
 boolean useFullScreen = true; // false for a windowed 1000x800 canvas during development
 
-void setup() {
+// size()/fullScreen() must be an unconditional first call in setup() for Processing's
+// preprocessor to pick it up — putting the useFullScreen branch there breaks that, so
+// the choice lives here instead, which Processing allows to be conditional.
+void settings() {
   if (useFullScreen) {
     fullScreen(P2D);
-    noCursor();
   } else {
     size(1000, 800, P2D);
+  }
+}
+
+void setup() {
+  if (useFullScreen) {
+    noCursor();
   }
   smooth(4);
 
