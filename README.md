@@ -19,9 +19,11 @@ sketch launches fullscreen (mouse cursor hidden) at your display's native resolu
 with the sequencer paused and the background already settled into its starting layout —
 press Space to start playback. Press `Esc` to quit.
 
-To run windowed instead (useful during development), set `useFullScreen = false` near
-the top of `Processing_Loops.pde` — it'll open at a fixed 1000×800 with the cursor
-visible.
+To run windowed instead (useful during development), open `setup()` at the top of
+`Processing_Loops.pde` and swap which line is commented out — use `size(1000, 800, P2D)`
+instead of `fullScreen(P2D)`, and comment out the `noCursor()` line too so the cursor
+stays visible. (Processing requires `size()`/`fullScreen()` to be a single literal call,
+so this has to be a source edit rather than a runtime toggle.)
 
 ## Controls
 

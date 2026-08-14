@@ -79,23 +79,15 @@ int mutationPhase = PHASE_BUILD;
 int phaseEndTime = -1;
 float globalRotation = 0;
 
-boolean useFullScreen = true; // false for a windowed 1000x800 canvas during development
-
-// size()/fullScreen() must be an unconditional first call in setup() for Processing's
-// preprocessor to pick it up — putting the useFullScreen branch there breaks that, so
-// the choice lives here instead, which Processing allows to be conditional.
-void settings() {
-  if (useFullScreen) {
-    fullScreen(P2D);
-  } else {
-    size(1000, 800, P2D);
-  }
-}
-
 void setup() {
-  if (useFullScreen) {
-    noCursor();
-  }
+  // size()/fullScreen() must be a single, literal, unconditional call — Processing's
+  // preprocessor won't accept it behind a variable or an if/else. To switch modes,
+  // comment/uncomment the pair below (and the noCursor() line with it).
+  fullScreen(P2D);         // Fullscreen, installation mode (default)
+  // size(1000, 800, P2D); // Windowed dev canvas — swap the comment with the line above
+
+  noCursor(); // comment this out too when running windowed, to keep the cursor visible
+
   smooth(4);
 
   // Reseed explicitly so this run's palette/texture/mode mapping is independent of
