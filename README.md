@@ -1,10 +1,10 @@
 # Processing Loops
 
 A generative audio-visual instrument built in Processing. A step sequencer drives drum
-and chord samples, and the same sequence data drives a generative background — shape
-density, color palette, texture, and layout all react to what's currently playing, with
-a lag/mutation system that keeps everything drifting and morphing smoothly instead of
-snapping.
+and chord samples plus a synthesized, reverb-treated bassline, and the same sequence
+data drives a generative background — shape density, color palette, texture, and
+layout all react to what's currently playing, with a lag/mutation system that keeps
+everything drifting and morphing smoothly instead of snapping.
 
 ## Requirements
 
@@ -59,7 +59,9 @@ whatever was there:
 
 Drums run at 1:1 speed (16 steps, one drum cycle). Chords run at half-time across 32
 global steps (16 chord steps spanning 2 drum cycles), and only one chord sample rings
-at a time — triggering a new one cuts off whatever was still playing.
+at a time — triggering a new one crossfades out whatever was still playing (rather than
+cutting it) and glides a synthesized bassline to the new chord's root note. Both the
+chord layer and the bassline share a reverb send for a softer, more cohesive tone.
 
 ## Automated visuals mode
 

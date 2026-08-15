@@ -59,6 +59,27 @@ boolean[][] chordSequence = new boolean[16][5]; // Dm, Am, F, Gm, E7
 SoundFile[] drumSounds = new SoundFile[4];
 SoundFile[] chordSounds = new SoundFile[5];
 
+// Ambient bus: shared reverb send for the pad (chord) layer and the bassline, so they
+// read as one cohesive texture rather than separately-processed sounds. This library
+// version has no ramped amp()/freq() calls, so fades and pitch glides are driven by
+// hand — the same per-frame-ease pattern already used for smoothNum/paletteLerp/etc.
+Reverb chordReverb;
+final float CHORD_LEVEL = 0.8;
+final float CHORD_FADE_SPEED = 0.03; // ~1s to fade in/out
+float[] chordAmp = new float[5];
+float[] chordAmpTarget = new float[5];
+
+// Bassline: a single continuous oscillator that tracks whichever chord's root is
+// active, gliding between roots rather than jumping. Root frequencies are octave-2,
+// matching Dm, Am, F, Gm, E7 in that order.
+TriOsc bassOsc;
+final float BASS_LEVEL = 0.18;
+final float BASS_AMP_SPEED = 0.02;
+final float BASS_FREQ_SPEED = 0.01; // slower = more glide between roots
+float[] chordRootFreq = {73.42, 110.00, 87.31, 98.00, 82.41};
+float bassAmp = 0, bassAmpTarget = 0;
+float bassFreqCurrent = 73.42, bassFreqTarget = 73.42;
+
 // Playback & Mode State
 boolean isPlaying = false;
 boolean isAutonomous = false;
@@ -128,6 +149,21 @@ void setup() {
     println("Audio files loaded with fallback handling: " + e.getMessage());
   }
 
+  // Shared ambient bus: route the pad layer and bassline through one reverb send
+  chordReverb = new Reverb(this);
+  chordReverb.room(0.75);
+  chordReverb.damp(0.4);
+  chordReverb.wet(0.5);
+  for (int i = 0; i < 5; i++) {
+    if (chordSounds[i] != null) chordReverb.process(chordSounds[i]);
+  }
+
+  bassOsc = new TriOsc(this);
+  bassOsc.amp(0);
+  bassOsc.freq(bassFreqCurrent);
+  bassOsc.play();
+  chordReverb.process(bassOsc);
+
   // Pre-fill a subtle default drum pattern
   drumSequence[0][0] = true; // Kick on 1
   drumSequence[4][1] = true; // Clap on 5
@@ -146,6 +182,7 @@ void draw() {
 
   // Calculate parameters based on sequences
   updateSequenceParameters();
+  updateAmbientAudio();
 
   // Always draw generative art so shapes are visible
   drawGenerativeArt();
@@ -211,6 +248,29 @@ void updateSequenceParameters() {
     prevMode = currentMode;
     targetMode = newMode;
     modeTransition = 0.0;
+  }
+}
+
+// Eases each chord voice's gain toward its target every frame (attack/release fades,
+// since this library version has no ramped amp()), and glides the bassline's
+// amplitude/frequency the same way. Also frees a fully-faded chord voice with stop()
+// so it isn't left decoding silently.
+void updateAmbientAudio() {
+  for (int i = 0; i < 5; i++) {
+    chordAmp[i] += (chordAmpTarget[i] - chordAmp[i]) * CHORD_FADE_SPEED;
+    if (chordSounds[i] == null) continue;
+    chordSounds[i].amp(chordAmp[i]);
+    if (chordAmpTarget[i] == 0 && chordAmp[i] < 0.002 && chordSounds[i].isPlaying()) {
+      chordSounds[i].stop();
+    }
+  }
+
+  bassAmpTarget = isPlaying ? BASS_LEVEL : 0;
+  bassAmp += (bassAmpTarget - bassAmp) * BASS_AMP_SPEED;
+  bassFreqCurrent += (bassFreqTarget - bassFreqCurrent) * BASS_FREQ_SPEED;
+  if (bassOsc != null) {
+    bassOsc.amp(bassAmp);
+    bassOsc.freq(bassFreqCurrent);
   }
 }
 
@@ -857,7 +917,7 @@ void playStep() {
 
   // Play the chord on HALF-TIME (every 2 drum steps, 16 steps total across 2 drum cycles).
   // Chord samples are ~12s and sustain past their step, so at most one plays at a time:
-  // triggering a new one cuts off whatever chord was still ringing.
+  // triggering a new one crossfades out whatever chord was still ringing.
   if (globalStep % 2 == 0) {
     int activeVoice = -1;
     for (int i = 0; i < 5; i++) {
@@ -867,13 +927,27 @@ void playStep() {
       }
     }
     if (activeVoice != -1 && chordSounds[activeVoice] != null) {
-      if (currentChordVoice != -1 && currentChordVoice != activeVoice && chordSounds[currentChordVoice] != null) {
-        chordSounds[currentChordVoice].stop();
-      }
-      chordSounds[activeVoice].play();
-      currentChordVoice = activeVoice;
+      triggerChordVoice(activeVoice);
     }
   }
+}
+
+// Crossfades to a new chord voice (fading out whatever was ringing rather than cutting
+// it), and glides the bassline to that chord's root. Used both by playback and by the
+// manual chord-key preview.
+void triggerChordVoice(int voice) {
+  if (chordSounds[voice] == null) return;
+  if (currentChordVoice != -1 && currentChordVoice != voice) {
+    chordAmpTarget[currentChordVoice] = 0;
+  }
+  if (!chordSounds[voice].isPlaying()) {
+    chordAmp[voice] = 0;
+    chordSounds[voice].play();
+  }
+  chordAmpTarget[voice] = CHORD_LEVEL;
+  currentChordVoice = voice;
+
+  bassFreqTarget = chordRootFreq[voice];
 }
 
 int countActiveSounds(boolean[][] seq, int voiceIndex) {
@@ -912,10 +986,18 @@ void keyPressed() {
       for (int j = 0; j < 4; j++) drumSequence[i][j] = false;
       for (int j = 0; j < 5; j++) chordSequence[i][j] = false;
     }
-    if (currentChordVoice != -1 && chordSounds[currentChordVoice] != null) {
-      chordSounds[currentChordVoice].stop();
+    for (int i = 0; i < 5; i++) {
+      chordAmpTarget[i] = 0;
+      chordAmp[i] = 0;
+      if (chordSounds[i] != null) {
+        chordSounds[i].amp(0);
+        if (chordSounds[i].isPlaying()) chordSounds[i].stop();
+      }
     }
     currentChordVoice = -1;
+    bassAmpTarget = 0;
+    bassAmp = 0;
+    if (bassOsc != null) bassOsc.amp(0);
     snapVisualState();
   } else if (key == 'y' || key == 'Y') {
     globalStep = (globalStep + 1) % 32;
@@ -939,7 +1021,7 @@ void keyPressed() {
         boolean turningOn = !chordSequence[currentChordStep][j];
         if (turningOn) {
           setChordStep(currentChordStep, j);
-          if (chordSounds[j] != null) chordSounds[j].play();
+          triggerChordVoice(j);
         } else {
           chordSequence[currentChordStep][j] = false;
         }
