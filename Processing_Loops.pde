@@ -80,6 +80,24 @@ float[] chordRootFreq = {73.42, 110.00, 87.31, 98.00, 82.41};
 float bassAmp = 0, bassAmpTarget = 0;
 float bassFreqCurrent = 73.42, bassFreqTarget = 73.42;
 
+// Synthesized drone layer: a quiet, sustained open-fifth bed — two detuned oscillators
+// each on root and fifth (one octave above the bassline) for natural slow beating, plus
+// a slow per-oscillator wobble, so it drifts rather than sitting on a locked pitch.
+// Local-only A/B experiment: 'D' cycles which of the chord-bearing layers are live.
+final int LAYER_SYNTH_ONLY = 0;
+final int LAYER_BOTH = 1;
+final int LAYER_OMNICHORD_ONLY = 2;
+int audioLayerMode = LAYER_SYNTH_ONLY;
+SinOsc[] droneOsc = new SinOsc[4]; // 0,1 = root pair; 2,3 = fifth pair
+final float[] DRONE_DETUNE = {-0.003, 0.003, -0.004, 0.004}; // +/- ~0.3-0.4% (a few cents)
+final float DRONE_LEVEL = 0.063; // per-oscillator; 4 voices together ~= one soft pad
+final float DRONE_AMP_SPEED = 0.01; // slower than the bassline — a more glacial fade
+final float DRONE_FREQ_SPEED = 0.006; // slower glide than the bassline between chords
+final float DRONE_WOBBLE_HZ = 0.35; // target pitch drift in Hz at the wobble's peak
+float[] droneFreqCurrent = new float[4];
+float[] droneFreqTarget = new float[4];
+float droneAmp = 0, droneAmpTarget = 0;
+
 // Playback & Mode State
 boolean isPlaying = false;
 boolean isAutonomous = false;
@@ -163,6 +181,17 @@ void setup() {
   bassOsc.freq(bassFreqCurrent);
   bassOsc.play();
   chordReverb.process(bassOsc);
+
+  float droneRootStart = chordRootFreq[0] * 2.0; // one octave above the bassline's root
+  for (int i = 0; i < 4; i++) {
+    droneFreqCurrent[i] = droneRootStart;
+    droneFreqTarget[i] = droneRootStart;
+    droneOsc[i] = new SinOsc(this);
+    droneOsc[i].amp(0);
+    droneOsc[i].freq(droneRootStart);
+    droneOsc[i].play();
+    chordReverb.process(droneOsc[i]);
+  }
 
   // Pre-fill a subtle default drum pattern
   drumSequence[0][0] = true; // Kick on 1
@@ -271,6 +300,20 @@ void updateAmbientAudio() {
   if (bassOsc != null) {
     bassOsc.amp(bassAmp);
     bassOsc.freq(bassFreqCurrent);
+  }
+
+  boolean droneEnabled = (audioLayerMode != LAYER_OMNICHORD_ONLY);
+  droneAmpTarget = (isPlaying && droneEnabled) ? DRONE_LEVEL : 0;
+  droneAmp += (droneAmpTarget - droneAmp) * DRONE_AMP_SPEED;
+  float wobbleT = millis() * 0.0002;
+  for (int i = 0; i < 4; i++) {
+    droneFreqCurrent[i] += (droneFreqTarget[i] - droneFreqCurrent[i]) * DRONE_FREQ_SPEED;
+    // Each oscillator wobbles on its own slow, offset phase so the four don't drift in lockstep
+    float wobble = sin(wobbleT + i * 1.7) * DRONE_WOBBLE_HZ;
+    if (droneOsc[i] != null) {
+      droneOsc[i].amp(droneAmp);
+      droneOsc[i].freq(droneFreqCurrent[i] + wobble);
+    }
   }
 }
 
@@ -736,7 +779,7 @@ void drawSequencerUI() {
 void drawHUD() {
   fill(0, 180);
   noStroke();
-  rect(15, 15, 380, 150, 10);
+  rect(15, 15, 380, 170, 10);
 
   fill(255);
   textAlign(LEFT, TOP);
@@ -753,9 +796,15 @@ void drawHUD() {
   fill(isAutonomous ? color(255, 215, 0) : color(180));
   text("Autonomous Mode [A]: " + (isAutonomous ? "ON (Drums: fast | Chords: slow rate)" : "OFF"), 25, 85);
 
+  String layerLabel = (audioLayerMode == LAYER_SYNTH_ONLY) ? "SYNTH ONLY" :
+                       (audioLayerMode == LAYER_BOTH) ? "BOTH (Synth + Omnichord)" :
+                       "OMNICHORD ONLY";
+  fill(audioLayerMode == LAYER_BOTH ? color(150, 220, 255) : color(180));
+  text("Audio Layers [D]: " + layerLabel, 25, 105);
+
   fill(200);
-  text("Key Commands: [H] Hide UI | [Space] Play/Pause | [TAB] Bank", 25, 105);
-  text("              [A] Auto Mode | [C] Clear | [T/Y] Prev/Next", 25, 125);
+  text("Key Commands: [H] Hide UI | [Space] Play/Pause | [TAB] Bank", 25, 125);
+  text("              [A] Auto Mode | [D] Audio Layer | [C] Clear | [T/Y] Prev/Next", 25, 145);
 
   textAlign(CENTER, CENTER);
 }
@@ -937,17 +986,30 @@ void playStep() {
 // manual chord-key preview.
 void triggerChordVoice(int voice) {
   if (chordSounds[voice] == null) return;
+  boolean omnichordEnabled = (audioLayerMode != LAYER_SYNTH_ONLY);
+
   if (currentChordVoice != -1 && currentChordVoice != voice) {
     chordAmpTarget[currentChordVoice] = 0;
   }
-  if (!chordSounds[voice].isPlaying()) {
-    chordAmp[voice] = 0;
-    chordSounds[voice].play();
+  if (omnichordEnabled) {
+    if (!chordSounds[voice].isPlaying()) {
+      chordAmp[voice] = 0;
+      chordSounds[voice].play();
+    }
+    chordAmpTarget[voice] = CHORD_LEVEL;
+  } else {
+    chordAmpTarget[voice] = 0;
   }
-  chordAmpTarget[voice] = CHORD_LEVEL;
   currentChordVoice = voice;
 
   bassFreqTarget = chordRootFreq[voice];
+
+  float droneRoot = chordRootFreq[voice] * 2.0; // one octave above the bassline
+  float droneFifth = droneRoot * pow(2.0, 7.0 / 12.0); // perfect fifth above the root
+  droneFreqTarget[0] = droneRoot * (1.0 + DRONE_DETUNE[0]);
+  droneFreqTarget[1] = droneRoot * (1.0 + DRONE_DETUNE[1]);
+  droneFreqTarget[2] = droneFifth * (1.0 + DRONE_DETUNE[2]);
+  droneFreqTarget[3] = droneFifth * (1.0 + DRONE_DETUNE[3]);
 }
 
 int countActiveSounds(boolean[][] seq, int voiceIndex) {
@@ -981,6 +1043,8 @@ void keyPressed() {
     showUI = !showUI;
   } else if (key == 'a' || key == 'A') {
     isAutonomous = !isAutonomous;
+  } else if (key == 'd' || key == 'D') {
+    audioLayerMode = (audioLayerMode + 1) % 3;
   } else if (key == 'c' || key == 'C') {
     for (int i = 0; i < steps; i++) {
       for (int j = 0; j < 4; j++) drumSequence[i][j] = false;
@@ -998,6 +1062,11 @@ void keyPressed() {
     bassAmpTarget = 0;
     bassAmp = 0;
     if (bassOsc != null) bassOsc.amp(0);
+    droneAmpTarget = 0;
+    droneAmp = 0;
+    for (int i = 0; i < 4; i++) {
+      if (droneOsc[i] != null) droneOsc[i].amp(0);
+    }
     snapVisualState();
   } else if (key == 'y' || key == 'Y') {
     globalStep = (globalStep + 1) % 32;

@@ -63,6 +63,11 @@ at a time — triggering a new one crossfades out whatever was still playing (ra
 cutting it) and glides a synthesized bassline to the new chord's root note. Both the
 chord layer and the bassline share a reverb send for a softer, more cohesive tone.
 
+There's also a synthesized drone layer — a quiet, detuned open-fifth pad that glides
+between each chord's root and fifth — as an alternative or complement to the Omnichord
+samples. `D` cycles **Audio Layers** between Synth Only (default), Both, and Omnichord
+Only; the HUD shows which is active.
+
 ## Automated visuals mode
 
 To run the piece as an unattended, self-generating audio-visual loop (installation,
